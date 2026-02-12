@@ -1,0 +1,12 @@
+{
+  "name": "mock-layaair-project",
+  "version": "1.0.0",
+  "description": "Mock LayaAir 3.x project for ACP testing",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["layaair", "game", "typescript"],
+  "author": "",
+  "license": "MIT"
+}
