@@ -14,7 +14,23 @@
       "Bash(git -C /mnt/e/reference/opencode/mock_project rev-list --max-parents=0 --all)",
       "Bash(ss:*)",
       "Bash(netstat:*)",
-      "Bash(node -e \"\nconst data = require\\(''./packages/opencode/src/provider/models-snapshot.ts''.replace\\(''.ts'',''''\\) + ''.ts'' ? '''' : ''''\\);\n\")"
+      "Bash(node -e \"\nconst data = require\\(''./packages/opencode/src/provider/models-snapshot.ts''.replace\\(''.ts'',''''\\) + ''.ts'' ? '''' : ''''\\);\n\")",
+      "Bash(dir:*)",
+      "Bash(git log:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx opencode web)",
+      "Bash(where:*)",
+      "Bash(gh repo view:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(git checkout:*)",
+      "Bash(del \"E:\\\\reference\\\\opencode\\\\packages\\\\opencode\\\\src\\\\tool\\\\agent-switch.ts\")",
+      "Bash(del \"E:\\\\reference\\\\opencode\\\\packages\\\\opencode\\\\src\\\\tool\\\\agent-switch.txt\")",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push)",
+      "Bash(git push:*)",
+      "Bash(git reset:*)"
     ]
   }
 }
