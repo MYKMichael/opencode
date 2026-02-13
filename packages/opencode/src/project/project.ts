@@ -3,6 +3,7 @@ import fs from "fs/promises"
 import { Filesystem } from "../util/filesystem"
 import path from "path"
 import { $ } from "bun"
+import { execFile } from "child_process"
 import { Storage } from "../storage/storage"
 import { Log } from "../util/log"
 import { Flag } from "@/flag/flag"
@@ -13,6 +14,23 @@ import { BusEvent } from "@/bus/bus-event"
 import { iife } from "@/util/iife"
 import { GlobalBus } from "@/bus/global"
 import { existsSync } from "fs"
+
+/**
+ * Run a git command with a timeout using child_process.execFile.
+ * Bun's $ shell can hang on Windows for git commands, so we use
+ * Node's child_process as a reliable cross-platform fallback.
+ */
+function gitExec(args: string[], cwd: string, timeoutMs = 10000): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    execFile("git", args, { cwd, timeout: timeoutMs, windowsHide: true }, (error, stdout) => {
+      if (error) {
+        resolve(undefined)
+      } else {
+        resolve(stdout.trim())
+      }
+    })
+  })
+}
 
 export namespace Project {
   const log = Log.create({ service: "project" })
@@ -54,19 +72,23 @@ export namespace Project {
     log.info("fromDirectory", { directory })
 
     const { id, sandbox, worktree, vcs } = await iife(async () => {
+      log.info("fromDirectory: searching for .git", { directory })
       const matches = Filesystem.up({ targets: [".git"], start: directory })
       const git = await matches.next().then((x) => x.value)
       await matches.return()
+      log.info("fromDirectory: .git search done", { git })
       if (git) {
         let sandbox = path.dirname(git)
 
         const gitBinary = Bun.which("git")
+        log.info("fromDirectory: git binary", { gitBinary })
 
         // cached id calculation
         let id = await Bun.file(path.join(git, "opencode"))
           .text()
           .then((x) => x.trim())
           .catch(() => undefined)
+        log.info("fromDirectory: cached id", { id })
 
         if (!gitBinary) {
           return {
@@ -79,19 +101,18 @@ export namespace Project {
 
         // generate id from root commit
         if (!id) {
-          const roots = await $`git rev-list --max-parents=0 --all`
-            .quiet()
-            .nothrow()
-            .cwd(sandbox)
-            .text()
+          log.info("fromDirectory: running git rev-list")
+          const roots = await gitExec(["rev-list", "--max-parents=0", "--all"], sandbox)
             .then((x) =>
               x
-                .split("\n")
-                .filter(Boolean)
-                .map((x) => x.trim())
-                .toSorted(),
+                ? x
+                    .split("\n")
+                    .filter(Boolean)
+                    .map((x) => x.trim())
+                    .toSorted()
+                : undefined,
             )
-            .catch(() => undefined)
+          log.info("fromDirectory: git rev-list done", { roots })
 
           if (!roots) {
             return {
@@ -119,13 +140,10 @@ export namespace Project {
           }
         }
 
-        const top = await $`git rev-parse --show-toplevel`
-          .quiet()
-          .nothrow()
-          .cwd(sandbox)
-          .text()
-          .then((x) => path.resolve(sandbox, x.trim()))
-          .catch(() => undefined)
+        log.info("fromDirectory: running git rev-parse --show-toplevel")
+        const top = await gitExec(["rev-parse", "--show-toplevel"], sandbox)
+          .then((x) => (x ? path.resolve(sandbox, x) : undefined))
+        log.info("fromDirectory: git rev-parse --show-toplevel done", { top })
 
         if (!top) {
           return {
@@ -138,17 +156,15 @@ export namespace Project {
 
         sandbox = top
 
-        const worktree = await $`git rev-parse --git-common-dir`
-          .quiet()
-          .nothrow()
-          .cwd(sandbox)
-          .text()
+        log.info("fromDirectory: running git rev-parse --git-common-dir")
+        const worktree = await gitExec(["rev-parse", "--git-common-dir"], sandbox)
           .then((x) => {
-            const dirname = path.dirname(x.trim())
+            if (!x) return undefined
+            const dirname = path.dirname(x)
             if (dirname === ".") return sandbox
             return dirname
           })
-          .catch(() => undefined)
+        log.info("fromDirectory: git rev-parse --git-common-dir done", { worktree })
 
         if (!worktree) {
           return {

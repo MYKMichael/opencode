@@ -51,6 +51,8 @@ export namespace Snapshot {
     if (Instance.project.vcs !== "git") return
     const cfg = await Config.get()
     if (cfg.snapshot === false) return
+    // Skip snapshots in ACP mode - Bun's $ shell hangs on Windows with piped stdio
+    if (process.env.OPENCODE_CLIENT === "acp") return
     const git = gitdir()
     if (await fs.mkdir(git, { recursive: true })) {
       await $`git init`
