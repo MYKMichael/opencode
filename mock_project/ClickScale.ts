@@ -1,89 +1,62 @@
-import {
-  Camera,
-  Scene3D,
-  Sprite3D,
-  MeshRenderer,
-  PrimitiveMesh,
-  BlinnPhongMaterial,
-  Vector3,
-  Transform3D,
-  InputManager,
-  Event,
-} from "laya/d3/laya"
-import { CameraType } from "laya/d3/core/Camera"
-import { regClass } from "laya/utils/Decorator"
+import { Script3D } from "laya/d3/component/Script3D"
+import { Sprite3D } from "laya/d3/core/Sprite3D"
+import { regClass } from "laya/reflect"
 
 @regClass()
-export class ClickScale extends Laya.Script {
-  private originalScale: Vector3 = new Vector3(1, 1, 1)
-  private targetScale: Vector3 = new Vector3(1.5, 1.5, 1.5)
-  private scaleSpeed: number = 5
-  private currentScale: Vector3 = new Vector3()
-  private isScalingUp: boolean = false
-  private isScalingDown: boolean = false
+export class ClickScale extends Script3D {
+  private _originalScale: number = 1
+  private _targetScale: number = 1.2
+  private _scaleDuration: number = 200
+  private _isScaling: boolean = false
+  private _scaleStartTime: number = 0
+
+  constructor() {
+    super()
+  }
 
   onAwake(): void {
-    const sprite3D = this.owner as Sprite3D
-    this.currentScale.cloneFrom(sprite3D.transform.scale)
+    this._originalScale = this.owner.transform.localScale.x
   }
 
-  onUpdate(): void {
-    const sprite3D = this.owner as Sprite3D
+  onStart(): void {
+    this.owner.on("click", this, this.onClick)
+  }
 
-    if (this.isScalingUp || this.isScalingDown) {
-      const targetScale = this.isScalingUp ? this.targetScale : this.originalScale
-      const scale = Vector3.lerp(this.currentScale, targetScale, (this.scaleSpeed * Laya.timer.delta) / 1000)
+  private onClick(): void {
+    if (this._isScaling) return
 
-      this.currentScale.cloneFrom(scale)
-      sprite3D.transform.localScale = this.currentScale
+    this._isScaling = true
+    this._scaleStartTime = Date.now()
+    this._targetScale = this.owner.transform.localScale.x === this._originalScale ? 1.2 : this._originalScale
 
-      if (Vector3.distanceSquared(this.currentScale, targetScale) < 0.001) {
-        this.currentScale.cloneFrom(targetScale)
-        sprite3D.transform.localScale = this.currentScale
-        this.isScalingUp = false
-        this.isScalingDown = false
-      }
+    this.startScaleAnimation()
+  }
+
+  private startScaleAnimation(): void {
+    const currentTime = Date.now()
+    const elapsed = currentTime - this._scaleStartTime
+
+    if (elapsed >= this._scaleDuration) {
+      this.owner.transform.localScale.setValue(this._targetScale, this._targetScale, this._targetScale)
+      this._isScaling = false
+      return
     }
+
+    const progress = elapsed / this._scaleDuration
+    const currentScale = this.easeOutBack(progress, this._originalScale, this._targetScale - this._originalScale)
+
+    this.owner.transform.localScale.setValue(currentScale, currentScale, currentScale)
+
+    Laya.timer.frameOnce(1, this, this.startScaleAnimation)
   }
 
-  onMouseDown(): void {
-    if (this.isScalingUp) {
-      this.isScalingUp = false
-      this.isScalingDown = true
-    } else if (this.isScalingDown) {
-      this.isScalingDown = false
-      this.isScalingUp = true
-    } else {
-      this.isScalingUp = true
-    }
-  }
-}
-
-@regClass()
-export class ClickScaleScene extends Laya.Scene {
-  onAwake(): void {
-    this.createScene()
+  private easeOutBack(t: number, b: number, c: number): number {
+    const s = 1.70158
+    return c * ((t = t - 1) * t * ((s + 1) * t + s) + 1) + b
   }
 
-  private createScene(): void {
-    const scene = new Scene3D()
-    Laya.stage.addChild(scene)
-
-    const camera = new Camera(0, 0.1, 100)
-    camera.transform.position = new Vector3(0, 0, 10)
-    camera.transform.rotate(new Vector3(0, 0, 0), true, false)
-    camera.orthographic = false
-    camera.fieldOfView = 60
-    scene.addChild(camera)
-
-    const box = new Sprite3D()
-    const meshRenderer = box.addComponent(MeshRenderer)
-    meshRenderer.mesh = PrimitiveMesh.createBox(2, 2, 2)
-    const material = new BlinnPhongMaterial()
-    material.albedoColor = new Vector4(0.5, 0.7, 1.0, 1.0)
-    meshRenderer.material = material
-    scene.addChild(box)
-
-    box.addComponent(ClickScale)
+  onDestroy(): void {
+    this.owner.off("click", this, this.onClick)
+    Laya.timer.clear(this, this.startScaleAnimation)
   }
 }

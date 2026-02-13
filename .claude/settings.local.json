@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git remote set-url:*)",
+      "Bash(bun install:*)",
+      "Bash(bun turbo build:*)",
+      "Bash(node verify_acp.cjs:*)",
+      "Bash(node -e \"console.log\\(require\\(''@agentclientprotocol/sdk/dist/acp.d.ts''\\).toString\\(\\)\\)\")",
+      "Bash(timeout 15 bun:*)",
+      "Bash(timeout 30 bun:*)",
+      "Bash(echo:*)",
+      "Bash(timeout 45 bun:*)",
+      "Bash(bun:*)",
+      "Bash(git -C /mnt/e/reference/opencode/mock_project rev-list --max-parents=0 --all)",
+      "Bash(ss:*)",
+      "Bash(netstat:*)",
+      "Bash(node -e \"\nconst data = require\\(''./packages/opencode/src/provider/models-snapshot.ts''.replace\\(''.ts'',''''\\) + ''.ts'' ? '''' : ''''\\);\n\")"
+    ]
+  }
+}

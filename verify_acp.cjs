@@ -35,13 +35,15 @@ const CONFIG = {
   WORKING_DIR: path.join(__dirname, 'mock_project'),
 
   // JSON-RPC 请求超时时间（毫秒）
-  REQUEST_TIMEOUT: 30000,
+  REQUEST_TIMEOUT: 120000, // 2 分钟
 
   // 是否启用详细日志
   VERBOSE: true,
 
   // 测试提示词
-  TEST_PROMPT: '帮我在当前目录生成一个 LayaAir 3.x 的 TypeScript 脚本，实现点击缩放功能，必须使用 @regClass 装饰器'
+  // TEST_PROMPT: '帮我在当前目录生成一个 LayaAir 3.x 的 TypeScript 脚本，实现点击缩放功能，必须使用 @regClass 装饰器'
+  // TEST_PROMPT: '帮我在当前目录生成一个测试文件，文件内有20个字'
+  TEST_PROMPT: '输出20个汉字，关于地球的信息'
 };
 
 // ========================================================================
@@ -165,19 +167,57 @@ class ACPClient {
         Logger.info(`创建工作目录: ${this.workingDir}`);
       }
 
-      // 使用 spawn 启动子进程
-      // 注意：
-      //   1. 必须用 `bun <file>` 而非 `bun run <file>` 以正确传递 yargs 子命令
-      //   2. 必须从 packages/opencode 目录启动以找到 solid-js 等子包依赖
+      // 优先使用本地编译版本，其次全局安装版，最后 bun 运行源码
+      const localBuild = path.join(__dirname, 'packages', 'opencode', 'dist', 'opencode-windows-x64', 'bin', 'opencode.exe');
+      const globalOpencode = process.platform === 'win32'
+        ? path.join(process.env.APPDATA || '', 'npm', 'opencode.cmd')
+        : 'opencode';
       const opencodeEntry = path.join(__dirname, 'packages', 'opencode', 'src', 'index.ts');
-      this.opencodeProcess = spawn('bun', [
-        opencodeEntry,
-        'acp',
-        '--cwd',
-        this.workingDir
-      ], {
-        stdio: ['pipe', 'pipe', 'pipe'], // stdin, stdout, stderr
-        cwd: path.join(__dirname, 'packages', 'opencode')
+
+      let command, args, useShell = false;
+      if (fs.existsSync(localBuild)) {
+        command = localBuild;
+        args = [
+          'acp',
+          '--cwd', this.workingDir,
+          '--print-logs',
+          '--log-level', 'DEBUG'
+        ];
+        Logger.debug(`使用本地编译版本: ${localBuild}`);
+      } else if (fs.existsSync(globalOpencode)) {
+        command = globalOpencode;
+        args = [
+          'acp',
+          '--cwd', this.workingDir,
+          '--print-logs',
+          '--log-level', 'DEBUG'
+        ];
+        useShell = true;
+        Logger.debug(`使用全局 opencode: ${globalOpencode}`);
+      } else {
+        const bunPath = process.platform === 'win32'
+          ? path.join(process.env.USERPROFILE || '', '.bun', 'bin', 'bun.exe')
+          : 'bun';
+        command = bunPath;
+        args = [
+          '--cwd', path.join(__dirname, 'packages', 'opencode'),
+          opencodeEntry,
+          'acp',
+          '--cwd', this.workingDir,
+          '--print-logs',
+          '--log-level', 'DEBUG'
+        ];
+        Logger.debug(`使用 bun 运行源码: ${bunPath}`);
+      }
+
+      this.opencodeProcess = spawn(command, args, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        cwd: __dirname,
+        shell: useShell,
+        env: {
+          ...process.env,
+          OPENCODE_DISABLE_PROJECT_CONFIG: '1',
+        }
       });
 
       // 处理进程启动错误
@@ -204,10 +244,8 @@ class ACPClient {
       this.opencodeProcess.stderr.on('data', (data) => {
         const errorMsg = data.toString();
         stderrChunks.push(errorMsg);
-        // 过滤掉一些正常的调试信息
-        if (!errorMsg.includes('Debugger') && !errorMsg.includes('chrome-devtools')) {
-          Logger.warn(`[STDERR] ${errorMsg.trim()}`);
-        }
+        // 临时：显示所有 stderr 输出以便调试
+        Logger.warn(`[STDERR] ${errorMsg.trim()}`);
       });
 
       // ================================================================
@@ -531,6 +569,8 @@ class ACPClient {
     const { content } = update;
 
     if (content && content.text) {
+      // 累积到消息缓冲区
+      this.messageBuffer += content.text;
       // 实时打印 AI 输出（不换行）
       process.stdout.write(content.text);
     }
@@ -761,7 +801,7 @@ class ACPClient {
    * @param {string} modelId - 可选的模型 ID
    * @returns {Promise<object>} Prompt 响应
    */
-  async sendPrompt(text, modelId = null) {
+  async sendPrompt(text) {
     if (!this.sessionId) {
       throw new Error('未创建会话，请先调用 createSession()');
     }
@@ -781,20 +821,44 @@ class ACPClient {
       ]
     };
 
-    if (modelId) {
-      params.modelId = modelId;
-    }
-
     Logger.info('AI 正在思考...\n');
 
-    const result = await this.sendRequest('session/prompt', params, 300000); // 5分钟超时
+    // 清空消息缓冲区，准备收集本次 prompt 的输出
+    this.messageBuffer = '';
+
+    const result = await this.sendRequest('session/prompt', params, 120000); // 2分钟超时
 
     console.log('\n');
     Logger.separator();
     Logger.success('Prompt 处理完成!');
+
+    // 将累积的完整文本附加到结果中
+    const fullText = this.messageBuffer.trim();
+    result.text = fullText;
     Logger.json('Result', result);
     Logger.separator();
 
+    return result;
+  }
+
+  /**
+   * 设置会话模型（必须在 sendPrompt 之前调用）
+   * @param {string} modelId - 模型 ID，如 "opencode/gpt-5-nano"
+   * @returns {Promise<object>} 设置结果
+   */
+  async setModel(modelId) {
+    if (!this.sessionId) {
+      throw new Error('未创建会话，请先调用 createSession()');
+    }
+
+    Logger.info(`设置会话模型: ${modelId}`);
+
+    const result = await this.sendRequest('session/set_model', {
+      sessionId: this.sessionId,
+      modelId: modelId
+    });
+
+    Logger.success(`模型已设置: ${modelId}`);
     return result;
   }
 
@@ -856,12 +920,40 @@ async function main() {
     // ================================================================
     // 步骤 3: 创建会话
     // ================================================================
-    await client.createSession();
+    const sessionResult = await client.createSession();
 
     // ================================================================
-    // 步骤 4: 发送测试 Prompt
+    // 步骤 3.5: 设置模型（使用已认证的 provider）
     // ================================================================
-    await client.sendPrompt(CONFIG.TEST_PROMPT);
+    // 从 session/new 返回的 availableModels 中选择已认证的模型
+    const models = sessionResult.models && sessionResult.models.availableModels || [];
+    // 优先使用 opencode 免费模型（流式传输已验证可用），再尝试 deepseek
+    // 使用 DeepSeek 避免 OpenCode Zen 免费层限流
+    // (title 生成用 opencode 免费层，主请求用 DeepSeek 避免并发限流)
+    const preferredModels = [
+      'deepseek/deepseek-chat',
+      'opencode/gpt-5-nano',
+      'opencode/big-pickle',
+    ];
+    let modelToUse = sessionResult.models && sessionResult.models.currentModelId;
+    for (const preferred of preferredModels) {
+      if (models.find(m => m.modelId === preferred)) {
+        modelToUse = preferred;
+        break;
+      }
+    }
+    if (modelToUse) {
+      await client.setModel(modelToUse);
+    } else {
+      Logger.warn('没有可用模型，跳过 setModel');
+    }
+
+    // ================================================================
+    // 步骤 4: 发送测试 Prompt（可选步骤，LLM API 限流时允许超时）
+    // ================================================================
+    const promptResult = await client.sendPrompt(CONFIG.TEST_PROMPT);
+    Logger.success('Prompt 返回结果:');
+    Logger.json('Prompt Result', promptResult);
 
     // ================================================================
     // 步骤 5: 打印统计信息
