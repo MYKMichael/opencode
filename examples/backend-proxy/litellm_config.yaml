@@ -1,0 +1,60 @@
+# =============================================================================
+# LiteLLM Proxy 配置文件
+# 文档: https://docs.litellm.ai/docs/proxy/configs
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 模型列表
+# 前端通过 model_name 选择模型，LiteLLM 自动路由到真实 Provider
+# 添加新模型只需复制一段并修改 model_name / model / api_key
+# -----------------------------------------------------------------------------
+model_list:
+  # ---- Model A: Anthropic Claude ----
+  - model_name: model-a
+    litellm_params:
+      model: anthropic/claude-sonnet-4-5-20250514
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  # ---- Model B: OpenAI GPT-4o ----
+  - model_name: model-b
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+
+  # ---- Model C: DeepSeek Reasoner ----
+  - model_name: model-c
+    litellm_params:
+      model: deepseek/deepseek-reasoner
+      api_key: os.environ/DEEPSEEK_API_KEY
+      api_base: https://api.deepseek.com
+
+  # ---- 添加更多模型示例 ----
+  # - model_name: model-d
+  #   litellm_params:
+  #     model: gemini/gemini-2.0-flash
+  #     api_key: os.environ/GOOGLE_API_KEY
+  #
+  # - model_name: model-e
+  #   litellm_params:
+  #     model: openai/qwen-plus
+  #     api_key: os.environ/DASHSCOPE_API_KEY
+  #     api_base: https://dashscope.aliyuncs.com/compatible-mode/v1
+
+# -----------------------------------------------------------------------------
+# 通用设置
+# -----------------------------------------------------------------------------
+litellm_settings:
+  # 启用 Token 用量日志 (stdout)
+  success_callback: ["log"]
+  # 请求超时 (秒)
+  request_timeout: 300
+  # 允许流式响应
+  stream: true
+
+# -----------------------------------------------------------------------------
+# 代理服务设置
+# -----------------------------------------------------------------------------
+general_settings:
+  # 主密钥 (可选，设置后所有请求需带 Authorization: Bearer <master_key>)
+  # master_key: os.environ/LITELLM_MASTER_KEY
+  pass_through_endpoints: []

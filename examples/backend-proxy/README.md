@@ -81,3 +81,9 @@ const MODEL_MAP = {
 - 将 `usageLog` 替换为真实数据库 (PostgreSQL / MongoDB)
 - 添加请求速率限制
 - 考虑使用 [LiteLLM](https://github.com/BerriAI/litellm) 替代本服务，它提供了更完善的代理功能
+
+## LiteLLM 方案（推荐多模型场景）
+
+如果你需要接入较多模型，推荐使用 LiteLLM 替代 `server.js`，只需配置文件即可管理所有模型路由，无需编写代码。
+
+详见 **[LITELLM.md](./LITELLM.md)**。
